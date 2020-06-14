@@ -1,38 +1,44 @@
 package com.em_projects.grocery.viewmodel
 
 import android.util.Log
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.em_projects.grocery.model.GroceryItemModel
+import com.em_projects.grocery.model.remote.DataWrapper
+import org.json.JSONObject
 import tech.gusavila92.websocketclient.WebSocketClient
 import java.net.URI
 import java.net.URISyntaxException
 
 
 class GroceryViewModel : ViewModel() {
-    private lateinit var webSocketClient: WebSocketClient
-    private val groceryWsUrl = "wss://superdo-groceries.herokuapp.com/"
+    private  var webSocketClient: WebSocketClient? = null
+    private val groceryWsUrl = "wss://superdo-groceries.herokuapp.com/receive"
 
-    init {
-        createWebSocketClient()
-    }
 
-    private fun createWebSocketClient() {
-        val uri: URI
+    fun connect(): LiveData<DataWrapper<GroceryItemModel>> {
+        var uri: URI? = null
+        val liveData: MutableLiveData<DataWrapper<GroceryItemModel>> = MutableLiveData()
+        val dataWrapper: DataWrapper<GroceryItemModel> = DataWrapper()
         try {
             // Connect to local host
             uri = URI(groceryWsUrl)
         } catch (e: URISyntaxException) {
-            e.printStackTrace()
-            return
+            dataWrapper.throwable = e
+            liveData.postValue(dataWrapper)
         }
         webSocketClient = object : WebSocketClient(uri) {
 
             override fun onOpen() {
                 Log.i("WebSocket", "Session is starting")
-                webSocketClient.send("Hello World!");
             }
 
             override fun onTextReceived(s: String) {
                 Log.i("WebSocket", "Message received")
+                val json = JSONObject(s)
+                dataWrapper.data = GroceryItemModel(json.getString("bagColor"), json.getString("weight"), json.getString("name"))
+                liveData.postValue(dataWrapper)
             }
 
             override fun onBinaryReceived(data: ByteArray) {
@@ -46,6 +52,8 @@ class GroceryViewModel : ViewModel() {
             }
             override fun onException(e: Exception) {
                 println(e.message)
+                dataWrapper.throwable = e
+                liveData.postValue(dataWrapper)
             }
 
             override fun onCloseReceived() {
@@ -53,9 +61,15 @@ class GroceryViewModel : ViewModel() {
                 println("onCloseReceived")
             }
         }
-        webSocketClient.setConnectTimeout(10000)
-        webSocketClient.setReadTimeout(60000)
-        webSocketClient.enableAutomaticReconnection(500)
-        webSocketClient.connect()
+        webSocketClient?.setConnectTimeout(10000)
+        webSocketClient?.setReadTimeout(60000)
+        webSocketClient?.enableAutomaticReconnection(500)
+        webSocketClient?.connect()
+
+        return liveData
+    }
+
+    fun disconnect() {
+        webSocketClient?.close()
     }
 }
